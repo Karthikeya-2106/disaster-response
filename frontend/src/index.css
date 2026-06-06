@@ -1,0 +1,19 @@
+@import 'leaflet/dist/leaflet.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root { height: 100%; margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+
+.leaflet-container { width: 100%; height: 100%; z-index: 1; }
+
+.sev-LOW { @apply bg-emerald-100 text-emerald-800; }
+.sev-MEDIUM { @apply bg-amber-100 text-amber-800; }
+.sev-HIGH { @apply bg-orange-100 text-orange-800; }
+.sev-CRITICAL { @apply bg-red-100 text-red-800 animate-pulse; }
+
+.status-REPORTED { @apply bg-blue-100 text-blue-800; }
+.status-ASSIGNED { @apply bg-indigo-100 text-indigo-800; }
+.status-IN_PROGRESS { @apply bg-yellow-100 text-yellow-800; }
+.status-RESOLVED { @apply bg-emerald-100 text-emerald-800; }
+.status-CANCELLED { @apply bg-gray-100 text-gray-700; }

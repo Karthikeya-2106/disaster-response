@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: disaster-postgres
+    environment:
+      POSTGRES_USER: disaster
+      POSTGRES_PASSWORD: disaster123
+      POSTGRES_DB: disaster_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U disaster"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [disaster-net]
+
+  backend:
+    build: ./backend
+    container_name: disaster-backend
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/disaster_db
+      SPRING_DATASOURCE_USERNAME: disaster
+      SPRING_DATASOURCE_PASSWORD: disaster123
+      JWT_SECRET: ${JWT_SECRET:-mySuperSecretKeyForJWTSigningPleaseChangeMe123456}
+      UPLOAD_DIR: /app/uploads
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads_data:/app/uploads
+    networks: [disaster-net]
+
+  frontend:
+    build: ./frontend
+    container_name: disaster-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks: [disaster-net]
+
+volumes:
+  postgres_data:
+  uploads_data:
+
+networks:
+  disaster-net:
+    driver: bridge
