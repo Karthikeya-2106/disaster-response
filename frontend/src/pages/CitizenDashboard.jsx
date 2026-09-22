@@ -122,11 +122,20 @@ export default function CitizenDashboard() {
 
   useEffect(() => { load() }, [])
 
+  // Mirror of `reports` for the socket handler, so toasts aren't fired from inside a state updater.
+  const reportsRef = useRef(reports)
+  useEffect(() => { reportsRef.current = reports }, [reports])
+
   useWebSocket(['/topic/incidents'], (msg) => {
-    if (msg.type === 'INCIDENT_UPDATED') {
-      setReports(prev => prev.map(r => r.id === msg.payload.id ? msg.payload : r))
-      toast(`Your report "${msg.payload.title}" was updated to ${msg.payload.status}`)
+    if (msg.type !== 'INCIDENT_UPDATED') return
+    const mine = reportsRef.current.find(r => r.id === msg.payload.id)
+    if (!mine) return   // every incident's updates are broadcast; only react to this citizen's own
+    if (mine.status !== msg.payload.status) {
+      toast(`Your report "${msg.payload.title}" is now ${msg.payload.status.replace('_', ' ')}`)
+    } else if (!mine.aiAnalysis && msg.payload.aiAnalysis) {
+      toast(`AI photo check added to "${msg.payload.title}"`)
     }
+    setReports(prev => prev.map(r => r.id === msg.payload.id ? msg.payload : r))
   })
 
   if (loading) return (

@@ -13,6 +13,7 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
     List<Incident> findBySeverity(Severity severity);
     List<Incident> findByReporterId(Long reporterId);
     List<Incident> findByAssignedVolunteerId(Long volunteerId);
+    List<Incident> findByImageUrl(String imageUrl);
     long countByStatus(IncidentStatus status);
     long countBySeverity(Severity severity);
 

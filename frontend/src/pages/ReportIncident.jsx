@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MapPin, Camera, Send, Brain, ChevronDown, ChevronUp, AlertCircle, CheckCircle2 } from 'lucide-react'
+import { MapPin, Camera, Send, Brain, ChevronDown, ChevronUp, CheckCircle2, ScanEye, AlertTriangle, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { incidentApi, aiApi } from '../api/endpoints'
+import AddressSearch from '../components/AddressSearch'
 
 const SEVERITY_COLOR = { LOW: 'bg-green-500', MEDIUM: 'bg-yellow-500', HIGH: 'bg-orange-500', CRITICAL: 'bg-red-500' }
 
@@ -13,6 +14,10 @@ export default function ReportIncident() {
   })
   const [aiScore, setAiScore] = useState(null)
   const [aiAnalysis, setAiAnalysis] = useState(null)
+  const [photoAssessment, setPhotoAssessment] = useState(null)
+  const [photoAiState, setPhotoAiState] = useState(null)   // null | 'pending' | 'done' | 'unavailable'
+  const pollTimer = useRef(null)
+  const currentPhoto = useRef(null)                           // ignore results for a replaced photo
   const [analyzing, setAnalyzing] = useState(false)
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -27,14 +32,50 @@ export default function ReportIncident() {
     )
   }, [])
 
+  useEffect(() => () => clearTimeout(pollTimer.current), [])
+
+  // The vision check runs in the background (minutes on a local CPU model), so poll for it.
+  // Reporting never waits on it: if the incident is submitted first, the backend attaches the
+  // analysis when it finishes.
+  const pollPhotoAnalysis = (url, startedAt = Date.now()) => {
+    pollTimer.current = setTimeout(async () => {
+      if (currentPhoto.current !== url) return
+      try {
+        const r = await incidentApi.imageAnalysis(url)
+        if (currentPhoto.current !== url) return
+        if (r.status === 'done') {
+          setPhotoAssessment(r.aiAnalysis)
+          setAiScore(r.aiSeverityScore)
+          setPhotoAiState('done')
+          toast.success(`AI read the photo · ${r.aiAnalysis.severityLabel}`)
+          return
+        }
+        if (r.status === 'unavailable') { setPhotoAiState('unavailable'); return }
+      } catch { /* transient network error — keep polling */ }
+      if (Date.now() - startedAt < 8 * 60 * 1000) pollPhotoAnalysis(url, startedAt)
+      else setPhotoAiState('unavailable')
+    }, 3000)
+  }
+
   const handleFile = async (file) => {
     if (!file) return
+    clearTimeout(pollTimer.current)
+    currentPhoto.current = null
     setUploading(true)
+    setPhotoAssessment(null)
+    setPhotoAiState(null)
     try {
-      const data = await incidentApi.uploadImage(file, form.severity)
+      const data = await incidentApi.uploadImage(file, form.severity, form.description)
+      currentPhoto.current = data.imageUrl
       setForm(f => ({ ...f, imageUrl: data.imageUrl }))
       setAiScore(data.aiSeverityScore)
-      toast.success(`Image uploaded · AI score: ${(data.aiSeverityScore * 100).toFixed(0)}%`)
+      if (data.aiStatus === 'pending') {
+        setPhotoAiState('pending')
+        pollPhotoAnalysis(data.imageUrl)
+        toast.success('Photo uploaded — AI is examining it')
+      } else {
+        toast.success('Image uploaded')
+      }
     } catch (e) {
       toast.error(e.response?.data?.message || 'Upload failed')
     } finally { setUploading(false) }
@@ -59,7 +100,8 @@ export default function ReportIncident() {
 
   const submit = async (e) => {
     e.preventDefault()
-    if (!form.latitude || !form.longitude) return toast.error('Location required')
+    if (!form.address?.trim()) return toast.error('Address is required — search and select from suggestions')
+    if (!form.latitude || !form.longitude) return toast.error('Location required — select an address from the dropdown')
     setSubmitting(true)
     try {
       const inc = await incidentApi.create(form)
@@ -114,16 +156,28 @@ export default function ReportIncident() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Address (optional)</label>
-            <input value={form.address} onChange={e => u('address', e.target.value)}
-              placeholder="Street, area, landmark"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-300" />
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Address <span className="text-red-500">*</span>
+              <span className="text-xs font-normal text-gray-400 ml-1">— type to search, select from map suggestions</span>
+            </label>
+            <AddressSearch
+              required
+              value={form.address}
+              placeholder="Search street, area, landmark…"
+              onChange={(val) => u('address', val)}
+              onSelect={(loc) => {
+                if (loc) {
+                  setForm(f => ({ ...f, address: loc.address, latitude: loc.latitude, longitude: loc.longitude }))
+                  toast.success('Location set from address')
+                }
+              }}
+            />
           </div>
           <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            <MapPin size={15} className="text-brand-600 shrink-0" />
+            <MapPin size={15} className={form.latitude ? 'text-emerald-500 shrink-0' : 'text-gray-400 shrink-0'} />
             {form.latitude
-              ? <span>Location detected: <span className="font-mono text-xs">{form.latitude.toFixed(5)}, {form.longitude.toFixed(5)}</span></span>
-              : <span className="animate-pulse">Detecting your location…</span>
+              ? <span>📍 Location set: <span className="font-mono text-xs">{form.latitude.toFixed(5)}, {form.longitude.toFixed(5)}</span></span>
+              : <span className="animate-pulse text-gray-400">Detecting your location…</span>
             }
           </div>
         </div>
@@ -137,7 +191,7 @@ export default function ReportIncident() {
             <button type="button" onClick={runAiAnalysis} disabled={analyzing}
               className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white rounded-lg text-xs font-medium transition">
               <Brain size={13} />
-              {analyzing ? 'Analyzing…' : 'Analyze with Claude AI'}
+              {analyzing ? 'Analyzing…' : 'Analyze with AI'}
             </button>
           </div>
 
@@ -192,7 +246,7 @@ export default function ReportIncident() {
           )}
 
           {!aiAnalysis && !analyzing && (
-            <p className="text-xs text-gray-400">Click "Analyze" to get AI-powered severity assessment and response recommendations powered by Claude.</p>
+            <p className="text-xs text-gray-400">Click "Analyze" to get an AI severity assessment and response recommendations. Uploading a photo lets the AI assess the scene itself.</p>
           )}
         </div>
 
@@ -202,24 +256,108 @@ export default function ReportIncident() {
           <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 border-dashed border-gray-200 rounded-xl cursor-pointer hover:border-brand-400 hover:bg-brand-50/30 transition">
             <Camera size={24} className="text-gray-400" />
             <span className="text-sm text-gray-500">
-              {uploading ? 'Uploading…' : form.imageUrl ? '✓ Image uploaded — click to replace' : 'Click to upload photo (helps AI analysis)'}
+              {uploading ? 'Uploading photo…' : form.imageUrl ? '✓ Image uploaded — click to replace' : 'Click to upload photo — AI will assess the scene'}
             </span>
-            <input type="file" accept="image/*" className="hidden" onChange={e => handleFile(e.target.files[0])} />
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={e => handleFile(e.target.files[0])} />
           </label>
           {form.imageUrl && (
             <div className="mt-3">
               <img src={form.imageUrl} alt="incident" className="w-full max-h-48 object-cover rounded-lg" />
             </div>
           )}
+          {photoAiState === 'pending' && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2.5 text-xs text-indigo-800">
+              <Loader2 size={14} className="mt-0.5 shrink-0 animate-spin" />
+              <span>
+                <span className="font-semibold">AI is examining your photo.</span> This can take a couple of minutes.
+                {' '}<span className="font-semibold">You don't need to wait</span> — submit your report now and the analysis
+                will be added to it automatically.
+              </span>
+            </div>
+          )}
+          {photoAssessment && <PhotoAssessment a={photoAssessment} />}
         </div>
 
         {/* Submit */}
-        <button disabled={submitting || !form.latitude}
+        {/* Blocked only while the photo file itself is uploading — submitting then would file
+            the report without it. The AI check afterwards never blocks reporting. */}
+        <button disabled={submitting || uploading || !form.latitude}
           className="w-full bg-brand-600 text-white py-3.5 rounded-xl hover:bg-brand-700 disabled:opacity-50 flex items-center justify-center gap-2 font-semibold text-sm transition shadow-lg shadow-brand-200">
           <Send size={17} />
-          {submitting ? 'Reporting…' : 'Report Incident'}
+          {submitting ? 'Reporting…' : uploading ? 'Uploading photo…' : 'Report Incident'}
         </button>
       </form>
+    </div>
+  )
+}
+
+const LABEL_STYLE = {
+  CRITICAL: 'bg-red-100 text-red-700', HIGH: 'bg-orange-100 text-orange-700',
+  MEDIUM: 'bg-yellow-100 text-yellow-800', LOW: 'bg-green-100 text-green-700',
+}
+
+/** What the vision model saw in the uploaded photo. */
+function PhotoAssessment({ a }) {
+  return (
+    <div className="mt-3 border border-indigo-100 bg-indigo-50/60 rounded-lg p-4 space-y-3 text-sm">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 font-semibold text-indigo-800 text-xs uppercase tracking-wide">
+          <ScanEye size={14} /> What the AI sees in your photo
+        </span>
+        <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${LABEL_STYLE[a.severityLabel] || 'bg-gray-100 text-gray-700'}`}>
+          {a.severityLabel} · {(a.severityScore * 100).toFixed(0)}%
+        </span>
+      </div>
+
+      {!a.imageMatchesReport && (
+        <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-3 py-2 text-xs">
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+          This photo doesn't look like the disaster type you selected. Please check the type, or upload a photo of the scene.
+        </div>
+      )}
+
+      {a.summary && <p className="text-gray-700">{a.summary}</p>}
+
+      {a.hazards?.length > 0 && (
+        <div>
+          <div className="font-semibold text-indigo-800 text-xs uppercase tracking-wide mb-1">Hazards spotted</div>
+          <div className="flex flex-wrap gap-1.5">
+            {a.hazards.map((h, i) => (
+              <span key={i} className="px-2 py-0.5 bg-white border border-red-200 text-red-700 rounded-full text-xs">{h}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {a.peopleAtRisk && (
+          <div>
+            <div className="font-semibold text-indigo-800 text-xs uppercase tracking-wide mb-1">People at risk</div>
+            <p className="text-gray-700">{a.peopleAtRisk}</p>
+          </div>
+        )}
+        {a.accessNotes && (
+          <div>
+            <div className="font-semibold text-indigo-800 text-xs uppercase tracking-wide mb-1">Access for responders</div>
+            <p className="text-gray-700">{a.accessNotes}</p>
+          </div>
+        )}
+      </div>
+
+      {a.recommendedResources?.length > 0 && (
+        <div>
+          <div className="font-semibold text-indigo-800 text-xs uppercase tracking-wide mb-1">Resources needed</div>
+          <ul className="space-y-1">
+            {a.recommendedResources.map((r, i) => (
+              <li key={i} className="flex items-start gap-2 text-gray-700">
+                <CheckCircle2 size={13} className="text-indigo-500 mt-0.5 shrink-0" />{r}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <p className="text-[11px] text-gray-400">AI can misread photos. Responders confirm on arrival.</p>
     </div>
   )
 }

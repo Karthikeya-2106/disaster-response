@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Activity, Navigation, CheckCircle2, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { Activity, Navigation, CheckCircle2, Clock, ChevronDown, ChevronUp, MapPin } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { incidentApi, volunteerApi } from '../api/endpoints'
 import IncidentCard from '../components/IncidentCard'
@@ -139,19 +140,26 @@ export default function VolunteerDashboard() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {mine.map(i => (
               <IncidentRow key={i.id} incident={i} actions={
-                <div className="flex gap-2 mt-2">
-                  {i.status === 'ASSIGNED' && (
-                    <button onClick={() => setStatus(i.id, 'IN_PROGRESS', 'Volunteer en route')}
-                      className="flex-1 bg-yellow-500 text-white py-1.5 rounded-lg hover:bg-yellow-600 text-xs font-medium transition">
-                      Start Response
-                    </button>
-                  )}
-                  {i.status === 'IN_PROGRESS' && (
-                    <button onClick={() => setStatus(i.id, 'RESOLVED', 'Incident resolved by volunteer')}
-                      className="flex-1 bg-emerald-500 text-white py-1.5 rounded-lg hover:bg-emerald-600 text-xs font-medium transition">
-                      Mark Resolved
-                    </button>
-                  )}
+                <div className="flex flex-col gap-1.5 mt-2">
+                  {/* Navigate button — always visible for active assignments */}
+                  <Link to={`/navigate/${i.id}`}
+                    className="w-full flex items-center justify-center gap-2 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition">
+                    <Navigation size={13} /> Navigate to Incident
+                  </Link>
+                  <div className="flex gap-1.5">
+                    {i.status === 'ASSIGNED' && (
+                      <button onClick={() => setStatus(i.id, 'IN_PROGRESS', 'Volunteer en route')}
+                        className="flex-1 bg-yellow-500 text-white py-1.5 rounded-lg hover:bg-yellow-600 text-xs font-medium transition">
+                        En Route
+                      </button>
+                    )}
+                    {i.status === 'IN_PROGRESS' && (
+                      <button onClick={() => setStatus(i.id, 'RESOLVED', 'Incident resolved by volunteer')}
+                        className="flex-1 bg-emerald-500 text-white py-1.5 rounded-lg hover:bg-emerald-600 text-xs font-medium transition">
+                        Mark Resolved
+                      </button>
+                    )}
+                  </div>
                 </div>
               } />
             ))}

@@ -15,6 +15,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import AdminVolunteers from './pages/AdminVolunteers'
 import AnalyticsDashboard from './pages/AnalyticsDashboard'
 import MapView from './pages/MapView'
+import IncidentNavigation from './pages/IncidentNavigation'
 
 export default function App() {
   const { user } = useAuth()
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/analytics"        element={<PrivateRoute roles={['ADMIN']}><AnalyticsDashboard /></PrivateRoute>} />
 
         <Route path="/map" element={<PrivateRoute><MapView /></PrivateRoute>} />
+        <Route path="/navigate/:id" element={<PrivateRoute roles={['VOLUNTEER','ADMIN']}><IncidentNavigation /></PrivateRoute>} />
         <Route path="*"    element={<Navigate to={home} replace />} />
       </Routes>
 

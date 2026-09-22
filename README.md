@@ -2,7 +2,7 @@
 
 A full-stack platform for coordinating disaster response: citizens report incidents, volunteers accept rescue tasks, and admins monitor everything live on an interactive map.
 
-**Tech stack:** Spring Boot 3.3 · Java 21 · React 18 · Vite · Tailwind · Leaflet · PostgreSQL · WebSocket (STOMP) · JWT · Docker
+**Tech stack:** Spring Boot 3.3 · Java 21 · React 18 · Vite · Tailwind · Leaflet · PostgreSQL · WebSocket (STOMP) · JWT · Docker · Gemini / Ollama (free multimodal AI)
 
 ---
 
@@ -13,7 +13,7 @@ A full-stack platform for coordinating disaster response: citizens report incide
 - **Volunteer flow**: see nearby incidents in real time, accept rescues, update progress, share live location
 - **Admin flow**: real-time dashboard with stats, live incident map, volunteer assignment, shelter management, emergency broadcast
 - **Real-time updates** via WebSocket (STOMP over SockJS) — new incidents and status changes appear instantly for all subscribers
-- **AI severity estimation** stub that scores uploaded images 0–1 (pluggable for a real CNN/vision model later)
+- **AI vision triage** on free providers (Gemini free tier or local Ollama): reads incident photos, detects duplicate reports, and plans volunteer dispatch — with heuristic fallbacks so it runs with no AI at all
 - **Interactive map** with color-coded incident markers, shelter markers, live volunteer pins, severity radius circles
 - **Production-ready basics**: DTOs, service/repository pattern, global exception handler, audit logs, role-based authorization at method level, CORS, input validation, file upload validation, Spring Cache, request logging
 
@@ -32,8 +32,11 @@ docker compose up --build
 Wait ~2 minutes for the first build. When you see `Started DisasterApplication`, open:
 
 - **Frontend:** http://localhost:3000
-- **Backend API:** http://localhost:8080/api/health
+- **Backend API:** http://localhost:8081/api/health
 - **Postgres:** localhost:5432 (user: `disaster`, password: `disaster123`)
+
+All ports, the database credentials and the JWT secret have working defaults, so no
+`.env` file is required. To override any of them, `cp .env.example .env` and edit it.
 
 ### Demo accounts (auto-seeded on first boot)
 
@@ -49,12 +52,16 @@ Wait ~2 minutes for the first build. When you see `Started DisasterApplication`,
 
 You'll need **Java 21**, **Maven**, and **Node 20+**.
 
+On Windows you can start both at once with `./run.ps1`. Otherwise:
+
 ### Backend
 ```bash
 cd backend
 mvn spring-boot:run
 ```
-Uses the in-memory **H2 database** by default (profile `dev`) — no Postgres needed. App starts on http://localhost:8080. Visit http://localhost:8080/h2 to browse the DB (JDBC URL: `jdbc:h2:mem:disaster`, user `sa`, no password).
+Uses the in-memory **H2 database** by default (profile `dev`) — no Postgres needed. App starts on http://localhost:8081. Visit http://localhost:8081/h2 to browse the DB (JDBC URL: `jdbc:h2:mem:disaster`, user `sa`, no password).
+
+Set `SERVER_PORT` to run on a different port — remember to update the proxy targets in `frontend/vite.config.js` to match.
 
 ### Frontend
 ```bash
@@ -81,7 +88,7 @@ Opens on http://localhost:3000 with Vite's hot reload. The dev server proxies `/
 ## 🎬 Demo Script (3 minutes)
 
 1. **Open three browser windows side by side**, each logged in as a different role.
-2. **Citizen window:** Click "Report Incident" → fill form → upload a photo → submit. Point out the AI severity score appearing after upload.
+2. **Citizen window:** Click "Report Incident" → fill form → upload a photo → submit right away (no need to wait). With AI on, the **"What the AI sees in your photo"** panel appears when the check finishes — seconds on Gemini, a couple of minutes on a CPU-only Ollama box — and the same analysis shows up on the admin and volunteer incident cards live.
 3. **Volunteer window:** A toast notification appears within ~1 second. The incident shows up in "Available Incidents". Click "Accept Rescue".
 4. **Admin window:** The map updates live. The volunteer pin moves (purple). The incident card changes status to ASSIGNED.
 5. **Volunteer window:** Click "Start" → "Resolve".
@@ -95,7 +102,7 @@ Opens on http://localhost:3000 with Vite's hot reload. The dev server proxies `/
 ┌──────────────┐         ┌──────────────────────────────┐         ┌────────────┐
 │              │  HTTP   │                              │   JDBC  │            │
 │  React SPA   │ ──────► │   Spring Boot 3.3 backend    │ ──────► │ PostgreSQL │
-│  (port 3000) │         │   (port 8080)                │         │            │
+│  (port 3000) │         │   (port 8081)                │         │            │
 │              │ ◄────── │                              │         └────────────┘
 └──────────────┘ WS/STOMP│  • REST API   /api/*         │
                          │  • WebSocket  /ws (SockJS)   │
@@ -120,17 +127,22 @@ disaster-response/
 │   └── src/main/
 │       ├── java/com/disaster/
 │       │   ├── DisasterApplication.java
+│       │   ├── ai/              (AiClient — Gemini/Ollama/none, JsonSchemas, ImagePrep)
 │       │   ├── config/          (Security, WebSocket, WebMvc, DataInitializer)
-│       │   ├── controller/      (Auth, Incident, Shelter, Volunteer, Admin, Health)
-│       │   ├── dto/             (AuthDtos, AppDtos)
-│       │   ├── entity/          (User, Incident, Shelter, VolunteerLocation, RefreshToken, AuditLog)
+│       │   ├── controller/      (Auth, Incident, Shelter, Volunteer, Admin, Health,
+│       │   │                     Analytics, AiChat, AiTriage)
+│       │   ├── dto/             (AuthDtos, AppDtos, AiDtos)
+│       │   ├── entity/          (User, Incident, Shelter, VolunteerLocation, RefreshToken,
+│       │   │                     AuditLog, IncidentTimelineEntry)
 │       │   ├── enums/           (Role, Severity, DisasterType, IncidentStatus)
 │       │   ├── exception/       (AppException, GlobalExceptionHandler)
 │       │   ├── repository/      (Spring Data JPA interfaces)
 │       │   ├── security/        (JwtUtil, JwtAuthFilter, UserPrincipal)
-│       │   ├── service/         (Auth, Incident, Shelter, Volunteer, AiSeverity, FileStorage)
+│       │   ├── service/         (Auth, Incident, Shelter, Volunteer, FileStorage,
+│       │   │                     Analytics, AiChat, AiVision, AiTriage, PhotoAnalysis)
 │       │   └── websocket/       (EventPublisher)
 │       └── resources/application.yml
+│   └── src/test/java/com/disaster/  (ImagePrepTest, AiVisionServiceTest)
 ├── frontend/
 │   ├── package.json
 │   ├── vite.config.js
@@ -139,13 +151,17 @@ disaster-response/
 │   └── src/
 │       ├── main.jsx, App.jsx, index.css
 │       ├── api/          (client.js, endpoints.js)
-│       ├── components/   (Navbar, PrivateRoute, IncidentCard, IncidentMap)
+│       ├── components/   (Navbar, PrivateRoute, IncidentCard, IncidentMap,
+│       │                  IncidentTimeline, AddressSearch, AiEmergencyChat,
+│       │                  NotificationCenter, AiDispatchPanel)
 │       ├── context/      (AuthContext)
 │       ├── hooks/        (useWebSocket)
 │       └── pages/        (Login, Signup, CitizenDashboard, ReportIncident,
-│                          VolunteerDashboard, AdminDashboard, AdminVolunteers, MapView)
+│                          VolunteerDashboard, AdminDashboard, AdminVolunteers, MapView,
+│                          AnalyticsDashboard, IncidentNavigation)
 ├── docker-compose.yml
 ├── .env.example
+├── run.ps1              (Windows: starts backend + frontend in two windows)
 └── README.md
 ```
 
@@ -168,7 +184,8 @@ All endpoints under `/api`. JWT goes in `Authorization: Bearer <token>` header.
 | Method | Path | Roles |
 |--------|------|-------|
 | POST | `/api/incidents` | All authenticated |
-| POST | `/api/incidents/upload-image` (multipart) | All authenticated |
+| POST | `/api/incidents/upload-image` (multipart: `file`, `severity`, optional `description`) | All authenticated |
+| GET | `/api/incidents/image-analysis?url=` | All authenticated |
 | GET | `/api/incidents` | All authenticated |
 | GET | `/api/incidents/active` | All authenticated |
 | GET | `/api/incidents/nearby?lat=&lng=&radiusKm=` | All authenticated |
@@ -206,6 +223,31 @@ All endpoints under `/api`. JWT goes in `Authorization: Bearer <token>` header.
 | GET | `/api/admin/volunteers` | Admin |
 | POST | `/api/admin/broadcast-alert` | Admin |
 
+### Analytics
+
+| Method | Path | Roles | Returns |
+|--------|------|-------|---------|
+| GET | `/api/analytics/dashboard` | All authenticated | 14-day incident trend, severity + type distribution, response stats |
+| GET | `/api/analytics/incident/{id}/timeline` | All authenticated | Ordered status-change history for one incident |
+
+### AI
+
+| Method | Path | Roles | Purpose |
+|--------|------|-------|---------|
+| GET | `/api/ai/status` | All authenticated | Which provider is live (`gemini` / `ollama` / `none`) and its model |
+| POST | `/api/ai/chat` | All authenticated | Emergency guidance assistant |
+| POST | `/api/ai/analyze-incident` | All authenticated | Text-only assessment of a draft report |
+| GET | `/api/ai/triage/duplicates/{id}` | Admin/Volunteer | Is this report the same event as another active one nearby? |
+| POST | `/api/ai/triage/dispatch` | Admin | Board-wide volunteer↔incident assignment plan (read-only; admin confirms) |
+
+**Photo assessment is asynchronous.** `POST /api/incidents/upload-image` stores the photo and
+returns immediately with `imageUrl` and `aiStatus` (`"pending"`, or `"unavailable"` when AI is
+off). Poll `GET /api/incidents/image-analysis?url=<imageUrl>` until `status` is `"done"`
+(with `aiAnalysis`) or `"unavailable"`. If the incident is filed first, the analysis is attached
+to it when it finishes and an `INCIDENT_UPDATED` event goes out on `/topic/incidents`.
+
+Every endpoint works with no AI configured — see [The AI layer](#-the-ai-layer).
+
 ### WebSocket Topics (STOMP)
 
 Connect to `/ws` with `?token=<jwt>` and subscribe to:
@@ -220,7 +262,7 @@ Connect to `/ws` with `?token=<jwt>` and subscribe to:
 
 ```bash
 # 1. Login as admin
-curl -X POST http://localhost:8080/api/auth/login \
+curl -X POST http://localhost:8081/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@disaster.com","password":"admin123"}'
 
@@ -228,7 +270,7 @@ curl -X POST http://localhost:8080/api/auth/login \
 export TOKEN="paste_accessToken_here"
 
 # 2. Create an incident
-curl -X POST http://localhost:8080/api/incidents \
+curl -X POST http://localhost:8081/api/incidents \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -242,20 +284,25 @@ curl -X POST http://localhost:8080/api/incidents \
   }'
 
 # 3. Get active incidents
-curl http://localhost:8080/api/incidents/active \
+curl http://localhost:8081/api/incidents/active \
   -H "Authorization: Bearer $TOKEN"
 
 # 4. Broadcast alert (admin only)
-curl -X POST http://localhost:8080/api/admin/broadcast-alert \
+curl -X POST http://localhost:8081/api/admin/broadcast-alert \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"Cyclone warning","message":"Evacuate coastal areas","severity":"CRITICAL"}'
 
-# 5. Upload image (returns URL + AI score)
-curl -X POST http://localhost:8080/api/incidents/upload-image \
+# 5. Upload image — returns at once: {"imageUrl": "...", "aiStatus": "pending", ...}
+curl -X POST http://localhost:8081/api/incidents/upload-image \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@./photo.jpg" \
-  -F "severity=HIGH"
+  -F "severity=HIGH" \
+  -F "description=Street flooded, cars under water"
+
+# 6. Poll for the photo assessment (seconds on Gemini, ~2-3 min on a CPU-only Ollama box)
+curl "http://localhost:8081/api/incidents/image-analysis?url=/uploads/<uuid>.jpg" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
@@ -268,7 +315,7 @@ refresh_tokens(id, token UNIQUE, user_id, expiry_date)
 incidents(id, title, description, disaster_type, severity, status,
           latitude, longitude, address, image_url, reporter_id, reporter_name,
           assigned_volunteer_id, assigned_volunteer_name, ai_severity_score,
-          progress_note, created_at, updated_at)
+          ai_analysis /* JSON vision assessment */, progress_note, created_at, updated_at)
 shelters(id, name, address, latitude, longitude, capacity, current_occupancy,
          contact_phone, active)
 volunteer_locations(volunteer_id PK, volunteer_name, latitude, longitude,
@@ -283,13 +330,13 @@ Indices on `incidents(status)`, `incidents(severity)`, `incidents(created_at)`.
 ## 🛠️ Troubleshooting
 
 **`docker compose up` fails with "port already in use"**
-Something else is using 3000/5432/8080. Find and kill it, or change the host port in `docker-compose.yml` (e.g. `"3001:80"`).
+Something else is using 3000/5432/8081. Either kill it, or copy `.env.example` to `.env` and change `FRONTEND_PORT` / `BACKEND_PORT` / `POSTGRES_PORT`.
 
 **Backend container restarts repeatedly**
 Postgres usually wasn't ready yet. Wait 30s — the `depends_on: service_healthy` handles this but cold-start can be slow. Check `docker compose logs backend`.
 
 **"CORS error" in browser console**
-You're hitting backend (`:8080`) from frontend (`:3000`) without the proxy. Make sure you run frontend via `npm run dev` (uses Vite proxy) or via Docker (uses nginx proxy). Don't open `index.html` directly.
+You're hitting backend (`:8081`) from frontend (`:3000`) without the proxy. Make sure you run frontend via `npm run dev` (uses Vite proxy) or via Docker (uses nginx proxy). Don't open `index.html` directly.
 
 **WebSocket disconnects immediately**
 The JWT secret on the backend differs from when you logged in (e.g. you regenerated `.env`). Log out and log back in.
@@ -302,6 +349,9 @@ You're using an older JDK. Install JDK 21 (e.g. via SDKMAN: `sdk install java 21
 
 **`npm install` errors on Windows**
 Try `npm install --legacy-peer-deps`. If you get `gyp` errors, install Windows Build Tools or use Docker instead.
+
+**AI photo check never appears**
+Check `GET /api/ai/status` (or the badge on the admin dashboard). With `provider: none`, no AI is configured — see [The AI layer](#-the-ai-layer). With Ollama: is `ollama serve` running, and is a *vision* model pulled (`ollama list` should show `qwen2.5vl:3b`)? Text-only models like `phi3` can't read photos. The backend log explains every fallback in one line (`unreachable`, `did not answer within 300 s`, `rate limit hit`, `HTTP 404` for a wrong model name).
 
 **H2 console at /h2 shows "Whitelabel error page"**
 You're on the `prod` profile. The H2 console is only enabled on `dev`. Run with `mvn spring-boot:run` (defaults to `dev`).
@@ -319,14 +369,85 @@ You're on the `prod` profile. The H2 console is only enabled on `dev`. Run with 
 
 ---
 
-## 🧠 The "AI" Severity Score
+## 🧠 The AI layer
 
-`AiSeverityService.estimate()` currently uses a deterministic hash of image bytes mixed with the reported severity to give a stable 0–1 score for demo purposes. To plug in a real model:
+Runs on **free** providers only, and degrades to deterministic heuristics when none is configured — the app never needs a paid API or an internet connection to work.
 
-1. Add a Python service that wraps a vision model (e.g. a CNN trained on disaster imagery, or a vision LLM API).
-2. Replace the body of `estimate()` with an HTTP call to that service.
+### What it does
 
-The rest of the code already stores the score, displays it in the UI, and includes it in the WebSocket payload — no other changes needed.
+| Feature | Where | What the model does | Fallback without AI |
+|---|---|---|---|
+| **Vision damage assessment** | Report form after photo upload; every incident card (admin + volunteer) | Looks at the actual photo: severity score, hazards, people at risk, responder access, resources needed. Flags photos that don't match the reported disaster type. Runs in the background — reporting never waits for it. | Stable score from image bytes + reported severity |
+| **Duplicate detection** | Admin → "Check for duplicate reports" | Compares a report with active reports **of the same disaster type** within 2 km / 24 h (the type filter is enforced in code, not left to the model) | Same type, ≤500 m, ≤6 h |
+| **Dispatch planning** | Admin → AI Dispatch → "Plan dispatch" | Matches free volunteers to open incidents by threat to life, severity and real distance | Greedy: most urgent first, nearest free volunteer |
+| **Assistant** | Chat widget, "Analyze with AI" | Emergency guidance with Indian helpline numbers | Keyword-matched safety replies |
+
+### Choosing a provider
+
+| | Gemini (Google AI Studio) | Ollama (local) |
+|---|---|---|
+| Cost | Free tier, no card | Free |
+| Setup | Get a key at https://aistudio.google.com/apikey | Install Ollama, `ollama pull qwen2.5vl:3b` (8 GB RAM) or `:7b` (16 GB+) |
+| Speed | A few seconds | Slow on CPU — measured on an i5-1235U laptop, 8 GB RAM, no GPU: **133–184 s per photo** with `qwen2.5vl:3b`, 20–60 s per text call |
+| Limits | Rate-limited free tier | None |
+| Privacy | Google's pricing page states free-tier content **is used to improve its products** — that includes citizens' photos | Nothing leaves the machine |
+| Offline | No | Yes |
+
+```powershell
+# Gemini
+$env:GEMINI_API_KEY="your-key"; mvn spring-boot:run
+
+# Ollama (needs a vision model for photo assessment)
+ollama pull qwen2.5vl:3b      # or qwen2.5vl:7b with 16 GB+ RAM
+$env:AI_PROVIDER="ollama"; mvn spring-boot:run
+```
+
+With neither set, the backend logs `AI provider: NONE (heuristic fallbacks only)` and everything still works. `GET /api/ai/status` and the admin dashboard badge show which mode is live.
+
+### Design notes
+
+- **Schema-constrained output.** Each result type is a Java record in `AiDtos`; `JsonSchemas` turns it into a JSON schema that the provider enforces during generation. There's no "please return only JSON" and no parsing JSON out of free text.
+- **Field order matters.** Every record puts observations and reasoning *before* the verdict. In testing, the verdict-first order produced `isDuplicate: false` next to reasoning that said "same event". Gemini sorts properties alphabetically unless told otherwise, so the order is pinned with `propertyOrdering`.
+- **Never trust model-produced ids.** Dispatch and duplicate results are checked against the database. Unknown ids are discarded, double-booked volunteers are dropped, and names come from the DB rather than the model's echo.
+- **Scores can't be forged.** The vision result is stored server-side beside the image (`<uuid>.png.ai.json`). Incident creation reads that file. It ignores any `aiSeverityScore` in the request body, so a citizen can't mark their own report 1.0 to jump the queue.
+- **Weak-model safety net.** When the model says "separate event" but location, type and timing match strongly, the report is flagged as a possible duplicate for human review. It isn't silently trusted either way.
+- **Reporting never waits on AI.** On a CPU-only laptop a photo takes 2–3 minutes. The first version analysed inline, so the photo URL reached the form only after the model finished — a citizen who pressed Submit in the meantime filed the report *without its photo*. Now the upload returns in under a second, `PhotoAnalysisService` runs the check on a single background worker (a local model handles one image at a time anyway; a 50-deep queue absorbs a burst), and a finished analysis is attached to an already-filed incident and pushed live. The worker writes its result before looking for incidents and incident creation re-checks after saving, so no analysis can slip between the two.
+- **Photos are shrunk before the model sees them.** Phone photos are 12+ MP; `ImagePrep` caps the long edge at 768 px (stored original untouched) — measured, reading the image is ~95% of CPU time, and 768 px is also one Gemini billing tile instead of two. It honours the EXIF orientation tag that phones use for portrait shots — `ImageIO` ignores it, so a naive resize would hand the model a sideways picture.
+- **One source of truth for severity.** The label is derived from the score in code. Asked for both, the model contradicted itself (score 0.7, label MEDIUM).
+- **No examples in prompts.** A field description once gave `'live power line down'` as an example hazard; the 3B model then reported exactly that for a flood photo with no power line in it. Descriptions now ask only for what is visible, and filler like "none visible" is stripped from lists.
+- **Ollama doesn't read schema descriptions.** Its `format` only constrains the output grammar, so the schema (with descriptions) is also placed in the prompt. Gemini reads descriptions natively.
+- **Timeouts follow measurements.** `AI_TIMEOUT_SECONDS=0` (default) means 60 s for Gemini and 300 s for Ollama; the browser waits 360 s for AI calls so it never gives up before the backend does.
+
+### Tested with real photos (qwen2.5vl:3b, CPU-only laptop)
+
+Openly licensed photos from Wikimedia Commons, judged against what is actually in each picture:
+
+| Photo | Reported as | Final result |
+|---|---|---|
+| Residential street under deep water, cars submerged, no people | FLOOD / HIGH | Flooded road and submerged vehicles, HIGH, matches report — no invented people or hazards |
+| Distant smoke plume behind an office block | FIRE / HIGH | Smoke listed as a hazard, HIGH 0.8, matches report |
+| Park bench on a sunny day | FLOOD / HIGH | **Flagged as not matching the report**, LOW 0 — catches junk reports |
+| 3008×2000 camera original of the flood photo | FLOOD / HIGH | Same verdict (CRITICAL 0.9); downscaled before sending |
+
+Measured time per photo on that laptop: **133–184 s** (reading the image dominates; writing the answer takes ~15 s). The same photo again takes ~25 s thanks to Ollama's cache.
+
+How the prompts got there — each fix came from a failed run:
+
+| Run | What went wrong | Fix |
+|---|---|---|
+| 1 | Score 0.7 labelled MEDIUM | Label derived from score in code |
+| 2 | Flood photo got "live power line down" and "unstable structures" — both copied from examples in the prompt | Examples removed from prompts |
+| 3 | Over-corrected: thick smoke described in the summary, yet no hazards and score 0 | Prompt: evidence of an out-of-frame emergency counts; never list what isn't visible |
+
+**Known limitations:** a 3B model is reliable on the overall verdict (is this the reported disaster, rough severity) but not on every detail. The fire summary still says "warehouse fire", echoing the reporter's text though only smoke is visible. Hazard lists sometimes include negative statements ("No visible trapped people"); they're left in because filtering negations would also drop real hazards like "no exit route". The UI labels all AI output *"verify on scene"*. `qwen2.5vl:7b` (16 GB RAM) or Gemini should do better.
+
+### Tests
+
+```bash
+cd backend && mvn test     # also runs as part of mvn package
+```
+
+`ImagePrepTest` (downscaling, EXIF rotation checked pixel by pixel, transparency, undecodable input) and `AiVisionServiceTest` (score→label bands, filler removal).
 
 ---
 

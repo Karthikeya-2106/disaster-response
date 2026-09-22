@@ -2,17 +2,45 @@ import { useEffect, useState } from 'react'
 import { Activity, AlertTriangle, CheckCircle2, Home, Users, Megaphone, BarChart2, Download, FileText, Shield, ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { adminApi, incidentApi, volunteerApi, shelterApi, analyticsApi } from '../api/endpoints'
+import { adminApi, incidentApi, volunteerApi, shelterApi, analyticsApi, aiApi } from '../api/endpoints'
 import IncidentCard from '../components/IncidentCard'
 import IncidentMap from '../components/IncidentMap'
 import IncidentTimeline from '../components/IncidentTimeline'
+import AiDispatchPanel from '../components/AiDispatchPanel'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 function IncidentRow({ incident }) {
   const [expanded, setExpanded] = useState(false)
+  const [dup, setDup] = useState(null)
+  const [checking, setChecking] = useState(false)
+
+  const checkDuplicate = async () => {
+    setChecking(true)
+    try { setDup(await aiApi.duplicates(incident.id)) }
+    catch { toast.error('Duplicate check failed') }
+    finally { setChecking(false) }
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
       <IncidentCard incident={incident} />
+      {incident.status === 'REPORTED' && (
+        <div className="px-4 py-2 border-t border-gray-100 text-xs">
+          {!dup ? (
+            <button onClick={checkDuplicate} disabled={checking}
+              className="text-indigo-600 hover:text-indigo-800 disabled:opacity-60 font-medium">
+              {checking ? 'Checking for duplicate reports…' : 'Check for duplicate reports'}
+            </button>
+          ) : (
+            <div className={dup.isDuplicate ? 'text-amber-800' : 'text-gray-500'}>
+              <span className="font-semibold">
+                {dup.isDuplicate ? `Likely duplicate of #${dup.duplicateOfIncidentId}` : 'No duplicate found'}
+              </span>
+              {' '}({Math.round(dup.confidence * 100)}% confidence) — {dup.reasoning}
+            </div>
+          )}
+        </div>
+      )}
       <button
         onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center justify-center gap-1 py-2 text-xs text-gray-400 hover:text-brand-600 border-t hover:bg-gray-50 transition"
@@ -146,6 +174,9 @@ export default function AdminDashboard() {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" style={{ height: 420 }}>
         <IncidentMap incidents={incidents} shelters={shelters} volunteers={volunteers} />
       </div>
+
+      {/* AI Dispatch */}
+      <AiDispatchPanel incidents={incidents} onAssigned={load} />
 
       {/* Broadcast */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
