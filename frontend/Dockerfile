@@ -1,12 +1,19 @@
+# ---- build ----
 FROM node:20-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
+WORKDIR /build
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
 COPY . .
 RUN npm run build
 
-FROM nginx:alpine
-COPY --from=build /app/dist /usr/share/nginx/html
+# ---- serve ----
+FROM nginx:1.27-alpine
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /build/dist /usr/share/nginx/html
+
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=5 \
+  CMD wget -qO- http://localhost/ >/dev/null || exit 1

@@ -12,7 +12,7 @@ const DEMO_ACCOUNTS = [
 
 const FEATURES = [
   { icon: Zap,    label: 'Real-Time Updates',   desc: 'WebSocket-powered live incident tracking' },
-  { icon: Brain,  label: 'Claude AI Assistant', desc: 'AI severity analysis & emergency guidance' },
+  { icon: Brain,  label: 'AI Vision Triage', desc: 'Photo damage assessment, duplicate detection & dispatch' },
   { icon: Radio,  label: 'SOS Panic Button',    desc: 'One-tap emergency alert with geolocation' },
   { icon: Shield, label: 'Role-Based Access',   desc: 'Citizen · Volunteer · Admin workflows' },
 ]
@@ -71,7 +71,7 @@ export default function Login() {
             <span>React 18</span><span>·</span>
             <span>Spring Boot 3</span><span>·</span>
             <span>WebSocket</span><span>·</span>
-            <span>Claude AI</span><span>·</span>
+            <span>Gemini / Ollama AI</span><span>·</span>
             <span>Docker</span>
           </div>
         </div>

@@ -48,6 +48,9 @@ public class AppDtos {
         private Long assignedVolunteerId;
         private String assignedVolunteerName;
         private Double aiSeverityScore;
+        /** Emitted as a nested JSON object, not an escaped string. */
+        @com.fasterxml.jackson.annotation.JsonRawValue
+        private String aiAnalysis;
         private String progressNote;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;

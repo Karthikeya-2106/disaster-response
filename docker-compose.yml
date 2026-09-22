@@ -3,47 +3,64 @@ services:
     image: postgres:16-alpine
     container_name: disaster-postgres
     environment:
-      POSTGRES_USER: disaster
-      POSTGRES_PASSWORD: disaster123
-      POSTGRES_DB: disaster_db
+      POSTGRES_DB: ${POSTGRES_DB:-disaster_db}
+      POSTGRES_USER: ${POSTGRES_USER:-disaster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-disaster123}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks: [disaster-net]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U disaster"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-disaster} -d ${POSTGRES_DB:-disaster_db}"]
+      interval: 10s
       timeout: 5s
       retries: 10
-    networks: [disaster-net]
+      start_period: 20s
+    restart: unless-stopped
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     container_name: disaster-backend
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/disaster_db
-      SPRING_DATASOURCE_USERNAME: disaster
-      SPRING_DATASOURCE_PASSWORD: disaster123
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-disaster_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-disaster}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-disaster123}
       JWT_SECRET: ${JWT_SECRET:-mySuperSecretKeyForJWTSigningPleaseChangeMe123456}
       UPLOAD_DIR: /app/uploads
+      # Free AI only. Unset = heuristic fallbacks; see .env.example.
+      AI_PROVIDER: ${AI_PROVIDER:-auto}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.8-flash}
+      # Ollama running on the host machine, reached from inside the container
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5vl:3b}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # makes the line above work on Linux too
     ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - "${BACKEND_PORT:-8081}:8081"
     volumes:
       - uploads_data:/app/uploads
     networks: [disaster-net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
     container_name: disaster-frontend
     ports:
-      - "3000:80"
-    depends_on:
-      - backend
+      - "${FRONTEND_PORT:-3000}:80"
     networks: [disaster-net]
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:

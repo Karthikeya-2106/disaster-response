@@ -31,7 +31,7 @@ public class IncidentService {
 
     @Transactional
     @CacheEvict(value = "incidents", allEntries = true)
-    public IncidentResponse create(CreateIncidentRequest req, UserPrincipal user, Double aiScore) {
+    public IncidentResponse create(CreateIncidentRequest req, UserPrincipal user, Double aiScore, String aiAnalysis) {
         Incident i = Incident.builder()
                 .title(req.getTitle()).description(req.getDescription())
                 .disasterType(req.getDisasterType()).severity(req.getSeverity())
@@ -39,7 +39,7 @@ public class IncidentService {
                 .latitude(req.getLatitude()).longitude(req.getLongitude())
                 .address(req.getAddress()).imageUrl(req.getImageUrl())
                 .reporterId(user.getUserId()).reporterName(user.getEmail())
-                .aiSeverityScore(aiScore).build();
+                .aiSeverityScore(aiScore).aiAnalysis(aiAnalysis).build();
         i = repo.save(i);
         audit(user, "CREATE_INCIDENT", "Incident", i.getId(), "Created: " + i.getTitle());
         saveTimeline(i.getId(), null, "REPORTED", user.getEmail(), user.getRole(), "Incident reported");
@@ -185,6 +185,22 @@ public class IncidentService {
                 .changedByName(byName).changedByRole(byRole).note(note).build());
     }
 
+    /**
+     * Attaches a photo analysis that finished after its incident was filed, and pushes the
+     * update to every dashboard. Incidents that already carry an analysis are left alone, so
+     * the "check again after saving" in incident creation can't double-apply.
+     */
+    @Transactional
+    @CacheEvict(value = "incidents", allEntries = true)
+    public void attachAiAnalysis(String imageUrl, double score, String analysisJson) {
+        for (Incident i : repo.findByImageUrl(imageUrl)) {
+            if (i.getAiAnalysis() != null) continue;
+            i.setAiSeverityScore(score);
+            i.setAiAnalysis(analysisJson);
+            publisher.incidentUpdated(toResponse(repo.save(i)));
+        }
+    }
+
     public IncidentResponse toResponse(Incident i) {
         return IncidentResponse.builder()
                 .id(i.getId()).title(i.getTitle()).description(i.getDescription())
@@ -194,7 +210,8 @@ public class IncidentService {
                 .reporterId(i.getReporterId()).reporterName(i.getReporterName())
                 .assignedVolunteerId(i.getAssignedVolunteerId())
                 .assignedVolunteerName(i.getAssignedVolunteerName())
-                .aiSeverityScore(i.getAiSeverityScore()).progressNote(i.getProgressNote())
+                .aiSeverityScore(i.getAiSeverityScore()).aiAnalysis(i.getAiAnalysis())
+                .progressNote(i.getProgressNote())
                 .createdAt(i.getCreatedAt()).updatedAt(i.getUpdatedAt()).build();
     }
 }

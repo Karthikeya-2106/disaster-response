@@ -1,4 +1,37 @@
-import { MapPin, Clock, User, Brain, Zap } from 'lucide-react'
+import { MapPin, Clock, User, Brain, Zap, ScanEye, AlertTriangle, Wrench } from 'lucide-react'
+
+/** What the vision model saw in the reporter's photo — what a responder needs before leaving. */
+function AiPhotoCheck({ a }) {
+  return (
+    <div className="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/50 px-2.5 py-2 space-y-1.5 text-xs">
+      <div className="flex items-center justify-between gap-1">
+        <span className="flex items-center gap-1 font-semibold text-indigo-800">
+          <ScanEye size={12} /> AI photo check · {a.severityLabel}
+        </span>
+        <span className="text-[10px] text-gray-400" title="AI can misread photos — confirm hazards on arrival">verify on scene</span>
+      </div>
+      {a.imageMatchesReport === false && (
+        <div className="flex items-start gap-1 text-amber-800">
+          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+          Photo doesn't match the reported disaster type — verify before dispatching.
+        </div>
+      )}
+      {a.hazards?.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {a.hazards.slice(0, 3).map((h, i) => (
+            <span key={i} className="px-1.5 py-0.5 rounded bg-white border border-red-200 text-red-700">{h}</span>
+          ))}
+        </div>
+      )}
+      {a.recommendedResources?.length > 0 && (
+        <div className="flex items-start gap-1 text-gray-600">
+          <Wrench size={12} className="mt-0.5 shrink-0" />
+          <span className="line-clamp-2">{a.recommendedResources.join(' · ')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
 
 const SEV_BADGE = {
   CRITICAL: 'bg-red-100 text-red-700 border border-red-200',
@@ -48,6 +81,8 @@ export default function IncidentCard({ incident, actions }) {
         {incident.imageUrl && (
           <img src={incident.imageUrl} alt="incident" className="w-full h-28 object-cover rounded-lg mb-3" />
         )}
+
+        {incident.aiAnalysis && <AiPhotoCheck a={incident.aiAnalysis} />}
 
         <div className="space-y-1 text-xs text-gray-500">
           <div className="flex items-center gap-1">

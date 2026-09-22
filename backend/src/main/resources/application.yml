@@ -9,7 +9,7 @@ spring:
       max-request-size: 10MB
 
 server:
-  port: 8080
+  port: ${SERVER_PORT:8081}
   error:
     include-message: always
 
@@ -21,9 +21,18 @@ jwt:
 app:
   upload-dir: ${UPLOAD_DIR:./uploads}
 
-anthropic:
-  api-key: ${ANTHROPIC_API_KEY:}
-  model: claude-haiku-4-5-20251001
+# Free AI providers only. With nothing configured the app uses built-in heuristics.
+ai:
+  provider: ${AI_PROVIDER:auto}          # auto | gemini | ollama | none  (auto = gemini if a key is set)
+  timeout-seconds: ${AI_TIMEOUT_SECONDS:0}   # 0 = auto: 60 s Gemini, 300 s Ollama (CPU photos measured at 130-170 s)
+  gemini:
+    api-key: ${GEMINI_API_KEY:}          # free key: https://aistudio.google.com/apikey
+    model: ${GEMINI_MODEL:gemini-3.8-flash}
+    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/models/}
+  ollama:
+    base-url: ${OLLAMA_URL:http://localhost:11434}
+    model: "${OLLAMA_MODEL:qwen2.5vl:3b}"   # 3b fits 8 GB RAM; use qwen2.5vl:7b with 16 GB+
+    num-ctx: ${OLLAMA_NUM_CTX:0}             # 0 = Ollama default (4096 on CPU-only machines)
 
 logging:
   level:

@@ -64,7 +64,7 @@ export default function AiEmergencyChat() {
               <div className="text-white font-semibold text-sm">AI Emergency Assistant</div>
               <div className="flex items-center gap-1">
                 <span className="w-2 h-2 bg-green-400 rounded-full inline-block" />
-                <span className="text-white/80 text-xs">Online • Powered by Claude AI</span>
+                <span className="text-white/80 text-xs">Online • Free AI with offline fallback</span>
               </div>
             </div>
             <button onClick={() => setOpen(false)} className="text-white/80 hover:text-white"><X size={18} /></button>

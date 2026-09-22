@@ -27,6 +27,8 @@ public class Incident {
     private Long assignedVolunteerId;
     private String assignedVolunteerName;
     private Double aiSeverityScore;
+    /** Structured vision assessment as JSON; null when no photo or no AI key. */
+    @Column(length = 8000) private String aiAnalysis;
     @Column(length = 1000) private String progressNote;
     @Column(nullable = false, updatable = false) private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
